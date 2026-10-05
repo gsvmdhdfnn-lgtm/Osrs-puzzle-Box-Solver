@@ -158,9 +158,7 @@ function render() {
   const label = $('move-label');
   label.textContent = view.complete ? 'Puzzle solved ✓' : `Move ${view.moveNumber} of ${view.total}`;
   label.classList.toggle('solved', view.complete);
-  $('upcoming').textContent = view.complete ? '' : view.upcoming.length ? `Then: ${view.upcoming.join(' · ')}` : 'Last move';
   $('previous').disabled = !view.canPrevious;
-  $('next').disabled = !view.canNext;
   saveProgress();
 }
 
@@ -205,7 +203,10 @@ for (const id of ['file', 'file-retry']) {
     if (file) analyse(file);
   });
 }
-$('next').addEventListener('click', () => step(1));
+$('board').addEventListener('click', (e) => {
+  const tile = e.target.closest('.tile');
+  if (tile?.classList.contains('next')) step(1);
+});
 $('previous').addEventListener('click', () => step(-1));
 $('start-over').addEventListener('click', () => {
   flow++;
