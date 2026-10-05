@@ -119,6 +119,17 @@ function buildBoard(art) {
   }
 }
 
+function moveArrow(board, tile) {
+  const from = board.indexOf(tile);
+  const blank = board.indexOf(0);
+  const fromRow = Math.floor(from / 5);
+  const fromCol = from % 5;
+  const blankRow = Math.floor(blank / 5);
+  const blankCol = blank % 5;
+  if (fromRow === blankRow) return blankCol > fromCol ? '→' : '←';
+  return blankRow > fromRow ? '↓' : '↑';
+}
+
 function render() {
   const view = session.walkthrough.view(session.index);
   const board = $('board');
@@ -135,7 +146,7 @@ function render() {
     if (isNext) {
       const badge = document.createElement('span');
       badge.className = 'badge';
-      badge.textContent = String(t);
+      badge.textContent = moveArrow(view.board, t);
       tile.append(badge);
     }
   }
