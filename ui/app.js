@@ -1,8 +1,8 @@
-// Presentation and flow for the Tree puzzle walkthrough. All recognition,
-// solving and walkthrough logic lives in src/; this file only wires it to the
-// page. Nothing leaves the device: the only network request is for the
-// reference artwork shipped with the page.
-import { prepareReference, recognizePuzzle } from '../src/recognize.js';
+// Presentation and flow for the puzzle walkthrough. All recognition,
+// identification, solving and walkthrough logic lives in src/; this file only
+// wires it to the page. Nothing leaves the device: the only network requests
+// are for the reference artwork shipped with the page.
+import { prepareReference, recognizeAnyPuzzle } from '../src/recognize.js';
 import { solvePuzzle } from '../src/solver.js';
 import { createWalkthrough } from '../src/walkthrough.js';
 import { encodeProgress, decodeProgress, PROGRESS_KEY } from '../src/progress-storage.js';
@@ -14,17 +14,27 @@ import { renderDebug } from './debug.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Reference image → recogniser reference + per-tile artwork. Loaded once.
-let referencePromise;
-function loadReference() {
-  referencePromise ??= imageDataFromUrl(REFERENCES.tree.src).then((img) => {
-    const reference = prepareReference(img);
-    return { reference, art: tileArtwork(img, reference) };
-  });
-  return referencePromise;
+// All supported reference images → prepared references. Loaded once; tile
+// artwork is cut lazily for the puzzle actually shown.
+let referencesPromise;
+function loadReferences() {
+  referencesPromise ??= Promise.all(Object.values(REFERENCES).map(async (entry) => {
+    const img = await imageDataFromUrl(entry.src);
+    return { entry, img, reference: prepareReference(img, { id: entry.id }) };
+  }));
+  return referencesPromise;
+}
+const artCache = new Map();
+async function artworkFor(puzzleId) {
+  if (!artCache.has(puzzleId)) {
+    const loaded = (await loadReferences()).find((r) => r.entry.id === puzzleId);
+    if (!loaded) throw new Error(`Unknown puzzle ${puzzleId}`);
+    artCache.set(puzzleId, tileArtwork(loaded.img, loaded.reference));
+  }
+  return artCache.get(puzzleId);
 }
 
-let session = null;     // { walkthrough, start, index }
+let session = null;     // { puzzleId, walkthrough, start, index }
 let debugInfo = {};
 
 // ------------------------------------------------------------------ views
@@ -52,9 +62,9 @@ async function analyse(file) {
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
   const t0 = performance.now();
   try {
-    const [{ reference }, img] = await Promise.all([loadReference(), imageDataFromBlob(file)]);
+    const [loaded, img] = await Promise.all([loadReferences(), imageDataFromBlob(file)]);
     const t1 = performance.now();
-    const recognition = recognizePuzzle(img, reference);
+    const recognition = recognizeAnyPuzzle(img, loaded.map((l) => l.reference));
     const t2 = performance.now();
     debugInfo = { recognition, timingsMs: { load: t1 - t0, recognise: t2 - t1 } };
     if (!recognition.ok) return showError(recognition.error.code, recognition.error.message);
@@ -65,7 +75,7 @@ async function analyse(file) {
     document.body.dataset.analysisMs = String(Math.round(t3 - t0));
     if (!solution.ok) return showError(solution.error.code, solution.error.message);
 
-    await startWalkthrough(recognition.state, solution.taps, 0, false);
+    await startWalkthrough(recognition.puzzleId, recognition.state, solution.taps, 0, false);
   } catch (err) {
     console.error(err);
     showError('UNEXPECTED', String(err?.message ?? err));
@@ -74,11 +84,12 @@ async function analyse(file) {
 
 // ----------------------------------------------------------- walkthrough
 
-async function startWalkthrough(start, taps, index, resumed) {
-  const { art } = await loadReference();
+async function startWalkthrough(puzzleId, start, taps, index, resumed) {
+  const art = await artworkFor(puzzleId);
   const walkthrough = createWalkthrough(start, taps);
-  session = { walkthrough, start, index: walkthrough.clamp(index) };
+  session = { puzzleId, walkthrough, start, index: walkthrough.clamp(index) };
   buildBoard(art);
+  $('board').dataset.puzzle = puzzleId;
   $('resumed').hidden = !resumed;
   show('walkthrough');
   render();
@@ -120,9 +131,10 @@ function render() {
       tile.append(badge);
     }
   }
+  const name = REFERENCES[session.puzzleId]?.name ?? 'Puzzle';
   board.setAttribute('aria-label', view.complete
-    ? 'Solved Tree puzzle'
-    : `Tree puzzle. Tap the highlighted tile (tile ${view.nextTile}).`);
+    ? `Solved ${name} puzzle`
+    : `${name} puzzle. Tap the highlighted tile (tile ${view.nextTile}).`);
 
   const label = $('move-label');
   label.textContent = view.complete ? 'Puzzle solved ✓' : `Move ${view.moveNumber} of ${view.total}`;
@@ -148,7 +160,7 @@ function step(delta) {
 function saveProgress() {
   if (!session) return;
   try {
-    localStorage.setItem(PROGRESS_KEY, encodeProgress({ start: session.start, taps: session.walkthrough.taps, index: session.index }));
+    localStorage.setItem(PROGRESS_KEY, encodeProgress({ puzzleId: session.puzzleId, start: session.start, taps: session.walkthrough.taps, index: session.index }));
   } catch { /* storage unavailable (private mode / quota): walkthrough still works */ }
 }
 
@@ -192,12 +204,12 @@ $('debug').addEventListener('toggle', () => {
 
 // Start: resume saved progress if valid, otherwise show the upload screen.
 (async () => {
-  loadReference().catch(() => {}); // warm up; errors surface on use
+  loadReferences().catch(() => {}); // warm up; errors surface on use
   const saved = loadProgress();
   if (!saved) return show('upload');
   try {
     debugInfo = { resumed: saved };
-    await startWalkthrough(saved.start, saved.taps, saved.index, true);
+    await startWalkthrough(saved.puzzleId, saved.start, saved.taps, saved.index, true);
   } catch {
     clearProgress();
     show('upload');

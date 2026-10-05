@@ -1,27 +1,32 @@
-// Plain-language messages for failures shown to players. Technical details
-// stay in the debug disclosure.
+// Plain-language, puzzle-neutral messages for failures shown to players.
+// Technical details stay in the debug disclosure.
+
+const TILES_UNCLEAR = {
+  title: 'Tiles unclear',
+  text: "Some tiles couldn't be identified confidently, so no solution is shown. Try a clearer screenshot with nothing covering the puzzle.",
+};
+const NOT_READABLE = {
+  title: 'Puzzle not readable',
+  text: "The tiles read from this screenshot don't form a valid puzzle. Please try another screenshot.",
+};
 
 const MESSAGES = {
   BOARD_NOT_FOUND: {
     title: 'Puzzle not found',
     text: "Couldn't find the puzzle box in this screenshot. Open the puzzle in OSRS and make sure the whole board is visible, then take a new screenshot.",
   },
-  POOR_MATCH: {
-    title: 'Not the Tree puzzle',
-    text: "This doesn't look like the Tree puzzle. Only the Tree puzzle is supported at the moment.",
+  UNSUPPORTED_PUZZLE: {
+    title: 'Puzzle not supported',
+    text: "This doesn't look like one of the supported puzzle boxes.",
   },
-  AMBIGUOUS: {
-    title: 'Tiles unclear',
-    text: "Some tiles couldn't be identified confidently, so no solution is shown. Try a clearer screenshot with nothing covering the puzzle.",
+  PUZZLE_AMBIGUOUS: {
+    title: 'Puzzle unclear',
+    text: "The puzzle picture couldn't be identified confidently, so no solution is shown. Try a clearer screenshot with nothing covering the puzzle.",
   },
-  INVALID_STATE: {
-    title: 'Puzzle not readable',
-    text: "The tiles read from this screenshot don't form a valid puzzle. Please try another screenshot.",
-  },
-  UNSOLVABLE: {
-    title: 'Puzzle not readable',
-    text: "The tiles read from this screenshot don't form a valid puzzle. Please try another screenshot.",
-  },
+  POOR_MATCH: TILES_UNCLEAR,
+  AMBIGUOUS: TILES_UNCLEAR,
+  INVALID_STATE: NOT_READABLE,
+  UNSOLVABLE: NOT_READABLE,
   UNEXPECTED: {
     title: 'Something went wrong',
     text: 'Something went wrong while reading the screenshot. Please try again.',

@@ -1,9 +1,10 @@
 // Locates the 5×5 puzzle grid in an arbitrary screenshot.
 //
 // Strategy: the board's most distinctive structure is its 4 internal vertical
-// and 4 internal horizontal grid lines — thin, dark-brown, perfectly parallel,
+// and 4 internal horizontal grid lines — thin, warm dark brown, perfectly parallel,
 // equally spaced, each about 5 tiles long, and crossing one another. We:
-//   1. build a "dark line colour" mask,
+//   1. build a "line colour" mask (dark warm brown, so dark grey/black/blue
+//      artwork is not mistaken for grid lines),
 //   2. collect long straight runs of that mask per column (vertical) and per
 //      row (horizontal) and merge adjacent runs into line candidates,
 //   3. search for 4 equally spaced vertical candidates and 4 equally spaced
@@ -12,6 +13,8 @@
 //      and turn it into a confidence score.
 // Nothing about the position, scale or blank location is assumed. Several
 // darkness thresholds are tried so colour/compression variation is tolerated.
+
+const MAX_GAP = 2;
 
 const DEFAULTS = {
   darkThresholds: [60, 80, 100, 120],
@@ -60,9 +63,14 @@ function refineEdges(img, best) {
   const p = (pitch.x + pitch.y) / 2;
   const profX = luminanceProfile(img, true, xs[0] - 0.3 * p, xs[5] + 0.3 * p, ys[0], ys[5]);
   const profY = luminanceProfile(img, false, ys[0] - 0.3 * p, ys[5] + 0.3 * p, xs[0], xs[5]);
+  // Line-colour profiles (255 = no line-coloured pixels, 0 = all), used where
+  // the artwork is as dark as the grid lines and luminance cannot separate them.
+  const mask = darkMask(img, best.threshold);
+  const lineX = maskProfile(mask, img, true, xs[0] - 0.3 * p, xs[5] + 0.3 * p, ys[0], ys[5]);
+  const lineY = maskProfile(mask, img, false, ys[0] - 0.3 * p, ys[5] + 0.3 * p, xs[0], xs[5]);
   return {
-    x: tileSpans(profX, xs, p, lineWidth),
-    y: tileSpans(profY, ys, p, lineWidth),
+    x: tileSpans([profX, lineX], xs, p, lineWidth),
+    y: tileSpans([profY, lineY], ys, p, lineWidth),
   };
 }
 
@@ -83,14 +91,40 @@ function luminanceProfile(img, vertical, a, b, c, d) {
   return { lo, values, at: (x) => values[Math.min(values.length - 1, Math.max(0, x - lo))] };
 }
 
-function tileSpans(prof, centres, p, lineWidth) {
+function maskProfile(mask, img, vertical, a, b, c, d) {
+  const { width: W, height: H } = img;
+  const lo = Math.max(0, Math.floor(a)), hi = Math.min((vertical ? W : H) - 1, Math.ceil(b));
+  const c0 = Math.max(0, Math.ceil(c)), c1 = Math.min((vertical ? H : W) - 1, Math.floor(d));
+  const values = new Float64Array(hi - lo + 1);
+  for (let o = lo; o <= hi; o++) {
+    let sum = 0;
+    for (let i = c0; i <= c1; i++) sum += mask[vertical ? i * W + o : o * W + i];
+    values[o - lo] = 255 * (1 - sum / (c1 - c0 + 1));
+  }
+  return { lo, values, at: (x) => values[Math.min(values.length - 1, Math.max(0, x - lo))] };
+}
+
+// Prefer luminance (sub-pixel accurate on anti-aliased edges); use the
+// line-colour profile when the tile next to the line is not clearly brighter.
+function pickProfile([lum, line], mid, lineAt, p, lineWidth, dir) {
+  const r = Math.max(1, Math.round(Math.max(lineWidth, 0.06 * p) / 2));
+  let core = Infinity;
+  for (let x = Math.round(lineAt) - r; x <= Math.round(lineAt) + r; x++) core = Math.min(core, lum.at(x));
+  const band = [];
+  for (let t = 0.1; t <= 0.3; t += 0.02) band.push(lum.at(Math.round(lineAt - dir * t * p)));
+  band.sort((u, v) => u - v);
+  return band[band.length >> 1] - core >= 15 ? lum : line;
+}
+
+function tileSpans(profs, centres, p, lineWidth) {
+  const prof = { pick: (mid, line, dir) => pickProfile(profs, mid, line, p, lineWidth, dir) };
   const spans = [];
   for (let k = 0; k < 5; k++) {
     const startLine = centres[k], endLine = centres[k + 1];
     const mid = (startLine + endLine) / 2;
     spans.push([
-      edgeFrom(prof, mid, startLine, p, lineWidth, -1),
-      edgeFrom(prof, mid, endLine, p, lineWidth, +1),
+      edgeFrom(prof.pick(mid, startLine, -1), mid, startLine, p, lineWidth, -1),
+      edgeFrom(prof.pick(mid, endLine, +1), mid, endLine, p, lineWidth, +1),
     ]);
   }
   return spans;
@@ -166,7 +200,9 @@ function darkMask(img, threshold) {
   const mask = new Uint8Array(width * height);
   for (let i = 0, p = 0; i < mask.length; i++, p += 4) {
     const r = data[p], g = data[p + 1], b = data[p + 2];
-    if (r <= threshold && g <= threshold && b <= threshold && r + 12 >= b) mask[i] = 1;
+    // Warm brown: dark, red ≥ green, and clearly less blue than red. Neutral
+    // or bluish dark artwork (grey stone, black fur, night sky) is excluded.
+    if (r <= threshold && g <= threshold && b <= threshold && g <= r + 4 && r - b >= 16) mask[i] = 1;
   }
   return mask;
 }
@@ -181,16 +217,21 @@ function lineCandidates(mask, W, H, minRun, vertical) {
   const finished = [];
   let open = [];
   for (let o = 0; o < outer; o++) {
+    // Runs of mask pixels; gaps of up to MAX_GAP pixels (compression noise
+    // inside a line) are bridged.
     const runs = [];
-    let s = -1;
+    let s = -1, last = -1;
     for (let i = 0; i <= inner; i++) {
       const on = i < inner && at(o, i);
-      if (on && s < 0) s = i;
-      else if (!on && s >= 0) {
-        if (i - s >= minRun) runs.push([s, i - 1]);
+      if (on) {
+        if (s < 0) s = i;
+        last = i;
+      } else if (s >= 0 && i - last > MAX_GAP) {
+        if (last - s + 1 >= minRun) runs.push([s, last]);
         s = -1;
       }
     }
+    if (s >= 0 && last - s + 1 >= minRun) runs.push([s, last]);
     const next = [];
     for (const [a, b] of runs) {
       const len = b - a + 1;

@@ -7,6 +7,7 @@ export function renderDebug(container, info) {
   const rows = [];
   if (resumed) {
     rows.push(['Source', 'Resumed from saved progress (no screenshot diagnostics)']);
+    rows.push(['Puzzle', resumed.puzzleId]);
     rows.push(['State', resumed.start.join(' ')]);
     rows.push(['Solution', `${resumed.taps.length} taps (saved) · resumed at move ${resumed.index + 1}`]);
     rows.push(['Taps', resumed.taps.join(' ')]);
@@ -18,6 +19,11 @@ export function renderDebug(container, info) {
     const b = d.boardDetection;
     rows.push(['Image', `${d.image.width} × ${d.image.height}`]);
     rows.push(['Board detection', b.ok ? `confidence ${b.confidence} · rect ${fmt(b.rect.x)},${fmt(b.rect.y)} ${fmt(b.rect.w)}×${fmt(b.rect.h)}` : b.reason]);
+    if (d.identification) {
+      const id = d.identification;
+      rows.push(['Puzzle', id.ok ? `${id.id} · runner-up ratio ${id.ratio} (min ${id.minRatio})` : `${id.code}`]);
+      rows.push(['Identification ΔE', id.scores.map((x) => `${x.id} ${x.score}`).join(', ')]);
+    }
     if (d.tiles) rows.push(['Tiles', `mean ΔE ${d.tiles.meanDeltaE} · worst ΔE ${d.tiles.worstDeltaE} · weakest margin ${d.tiles.minMargin}`]);
     if (d.boardConfidence != null) rows.push(['Overall confidence', String(d.boardConfidence)]);
     const st = recognition.state ?? d.candidate?.state;

@@ -4,6 +4,7 @@
 import { detectBoard } from './board-detect.js';
 import { buildReference, matchTiles, MATCH_DEFAULTS } from './tile-match.js';
 import { validatePermutation, isSolvable, countInversions, toGrid } from './puzzle-state.js';
+import { cellThumbnails, identifyPuzzle } from './identify.js';
 
 /**
  * Prepare a reference from a clean, solved puzzle image. The reference's grid
@@ -13,9 +14,51 @@ import { validatePermutation, isSolvable, countInversions, toGrid } from './puzz
 export function prepareReference(referenceImage, options = {}) {
   const board = detectBoard(referenceImage, options.detect);
   if (!board.ok) {
-    throw new Error(`Reference image: ${board.reason}`);
+    throw new Error(`Reference image${options.id ? ` '${options.id}'` : ''}: ${board.reason}`);
   }
-  return buildReference(referenceImage, board, options.match);
+  const reference = buildReference(referenceImage, board, options.match);
+  reference.id = options.id ?? null;
+  reference.idThumbs = cellThumbnails(referenceImage, board.cells, options.identify);
+  return reference;
+}
+
+/**
+ * Detects the board once, identifies which supported puzzle it shows, then
+ * runs full tile recognition against that puzzle's reference only.
+ * @param references prepared references, each with a stable `id`
+ * @returns the same shape as recognizePuzzle plus `puzzleId` (null on failure
+ *          before a puzzle was selected) and `diagnostics.identification`.
+ */
+export function recognizeAnyPuzzle(screenshot, references, options = {}) {
+  const t0 = now();
+  const board = detectBoard(screenshot, options.detect);
+  const t1 = now();
+  if (!board.ok) {
+    const diagnostics = {
+      image: { width: screenshot.width, height: screenshot.height },
+      boardDetection: summariseBoard(board),
+      timingsMs: { detect: t1 - t0 },
+    };
+    return { ...fail('BOARD_NOT_FOUND', board.reason, diagnostics), puzzleId: null };
+  }
+
+  const identification = identifyPuzzle(cellThumbnails(screenshot, board.cells, options.identify), references, options.identify);
+  const t2 = now();
+  if (!identification.ok) {
+    const diagnostics = {
+      image: { width: screenshot.width, height: screenshot.height },
+      boardDetection: summariseBoard(board),
+      identification,
+      timingsMs: { detect: round(t1 - t0), identify: round(t2 - t1) },
+    };
+    return { ...fail(identification.code, identification.message, diagnostics), puzzleId: null };
+  }
+
+  const reference = references.find((r) => r.id === identification.id);
+  const result = recognizeOnBoard(screenshot, board, reference, options, t1 - t0);
+  result.diagnostics.identification = identification;
+  result.diagnostics.timingsMs.identify = round(t2 - t1);
+  return { ...result, puzzleId: identification.id };
 }
 
 /**
@@ -28,23 +71,32 @@ export function prepareReference(referenceImage, options = {}) {
  * }}
  */
 export function recognizePuzzle(screenshot, reference, options = {}) {
-  const matchOpts = { ...MATCH_DEFAULTS, ...options.match };
   const t0 = now();
   const board = detectBoard(screenshot, options.detect);
   const t1 = now();
+  if (!board.ok) {
+    const diagnostics = {
+      image: { width: screenshot.width, height: screenshot.height },
+      boardDetection: summariseBoard(board),
+      timingsMs: { detect: t1 - t0 },
+    };
+    return fail('BOARD_NOT_FOUND', board.reason, diagnostics);
+  }
+  return recognizeOnBoard(screenshot, board, reference, options, t1 - t0);
+}
+
+// Full tile recognition and validation on an already-detected board.
+function recognizeOnBoard(screenshot, board, reference, options, detectMs) {
+  const matchOpts = { ...MATCH_DEFAULTS, ...options.match };
   const diagnostics = {
     image: { width: screenshot.width, height: screenshot.height },
     boardDetection: summariseBoard(board),
   };
 
-  if (!board.ok) {
-    diagnostics.timingsMs = { detect: t1 - t0 };
-    return fail('BOARD_NOT_FOUND', board.reason, diagnostics);
-  }
-
+  const t1 = now();
   const match = matchTiles(screenshot, board, reference, matchOpts);
   const t2 = now();
-  diagnostics.timingsMs = { detect: round(t1 - t0), match: round(t2 - t1) };
+  diagnostics.timingsMs = { detect: round(detectMs), match: round(t2 - t1) };
   diagnostics.tiles = {
     tileSize: match.tileSize,
     colourCorrection: match.colourCorrection,

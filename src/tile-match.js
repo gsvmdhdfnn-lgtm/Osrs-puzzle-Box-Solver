@@ -12,7 +12,8 @@
 // 4. Some reference tiles are nearly identical (e.g. plain-sky tiles 1 and
 //    5). For such "look-alike" pairs, a full-tile average is dominated by the
 //    shared pixels, so they are re-decided using only the pixels where the two
-//    reference tiles genuinely differ ("discriminative mask"). The decision is
+//    reference tiles genuinely differ ("discriminative mask"). If too few
+//    pixels differ strongly, progressively fainter differences are used. The decision is
 //    made jointly for the two cells involved, and its margin is reported.
 //    Before step 3 is final, a global per-channel colour correction (gain +
 //    offset in gamma-encoded sRGB, tightly bounded) is fitted from a first
@@ -42,6 +43,9 @@ export const MATCH_DEFAULTS = {
   // A pixel belongs to a look-alike pair's discriminative mask if the two
   // reference tiles differ there by more than this ΔE.
   maskDeltaE: 10,
+  // Pairs with fewer than minMaskPixels such pixels retry at these lower
+  // thresholds, so faint but consistent differences can still be used.
+  fallbackMaskDeltaE: [6, 4],
   minMaskPixels: 6,
   // A match is rejected outright if its mean ΔE exceeds this. Genuine
   // matches on the test fixture and its variants stay below ~7.
@@ -260,15 +264,18 @@ function encode(c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) 
 function decode(c) { return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }
 
 function discriminativeMask(ta, tb, size, opts) {
-  const bits = new Uint8Array(size * size);
-  let count = 0;
-  for (let y = opts.border; y < size - opts.border; y++) {
-    for (let x = opts.border; x < size - opts.border; x++) {
-      const k = y * size + x;
-      if (deltaE(ta, tb, k * 3) > opts.maskDeltaE) { bits[k] = 1; count++; }
+  const thresholds = [opts.maskDeltaE, ...opts.fallbackMaskDeltaE];
+  for (const thr of thresholds) {
+    const bits = new Uint8Array(size * size);
+    let count = 0;
+    for (let y = opts.border; y < size - opts.border; y++) {
+      for (let x = opts.border; x < size - opts.border; x++) {
+        const k = y * size + x;
+        if (deltaE(ta, tb, k * 3) > thr) { bits[k] = 1; count++; }
+      }
     }
+    if (count >= opts.minMaskPixels || thr === thresholds[thresholds.length - 1]) return { bits, count, threshold: thr };
   }
-  return { bits, count };
 }
 
 function meanDeltaE(ta, tb, size, border, mask) {
