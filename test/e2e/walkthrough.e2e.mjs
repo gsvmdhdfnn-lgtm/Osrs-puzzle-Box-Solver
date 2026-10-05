@@ -295,6 +295,23 @@ async function runOtherPuzzle(browser, cfg, results) {
   r.walkthrough = `ok (${N}/${N} moves; solved)`;
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(shots, `${cfg.name}-7-castle-solved.png`) });
+  // Startup race: with saved progress and slow reference loading, the upload
+  // screen must not be offered until the resume has settled, and a new
+  // screenshot (even if forced in) must never resurrect the old progress.
+  await page.evaluate((v) => localStorage.setItem('osrs-puzzle-solver/tree-walkthrough', v),
+    JSON.stringify({ v: 2, puzzle: 'castle', start: castle.state, taps: castle.taps, index: 3 }));
+  await page.route('**/assets/reference/**', async (route) => { await new Promise((res) => setTimeout(res, 1500)); await route.continue(); });
+  await page.goto(results.base, { waitUntil: 'commit' });
+  await page.waitForSelector('#file', { state: 'attached' });
+  assert.equal(await page.isVisible('#upload-view'), false, 'upload offered before resume settled');
+  await page.setInputFiles('#file', { name: 'no-board.png', mimeType: 'image/png', buffer: results.noBoard });
+  await page.waitForFunction(() => ['walkthrough', 'error'].includes(document.body.dataset.view), null, { timeout: 60000 });
+  await page.waitForTimeout(2000);
+  assert.equal(await view(page), 'error');
+  assert.equal(await page.evaluate(() => localStorage.getItem('osrs-puzzle-solver/tree-walkthrough')), null, 'old progress resurrected');
+  await page.unroute('**/assets/reference/**');
+  r.startupRace = 'ok (upload hidden while resuming; superseded resume did not render or save)';
+
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   await context.close();
@@ -338,7 +355,7 @@ try {
   for (const cfg of VIEWPORTS) {
     try {
       results.push(await runViewport(browser, cfg, { base, errorImages }));
-      results.push(await runOtherPuzzle(browser, cfg, { base, castle }));
+      results.push(await runOtherPuzzle(browser, cfg, { base, castle, noBoard }));
     } catch (e) {
       failed = true;
       results.push({ viewport: cfg.name, failure: e.message });

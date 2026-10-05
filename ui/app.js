@@ -35,6 +35,10 @@ async function artworkFor(puzzleId) {
 }
 
 let session = null;     // { puzzleId, walkthrough, start, index }
+// Incremented by every user action (upload, Start over). Async work started
+// for an earlier action checks it and does nothing once it is stale, so a
+// slow resume or analysis can never render or save over a newer action.
+let flow = 0;
 let debugInfo = {};
 
 // ------------------------------------------------------------------ views
@@ -56,6 +60,7 @@ function showError(code, detail) {
 // ------------------------------------------------------------- analysis
 
 async function analyse(file) {
+  const myFlow = ++flow;
   show('analysing');
   clearProgress();
   // Let "Reading puzzle…" paint before the (synchronous) heavy work starts.
@@ -63,6 +68,7 @@ async function analyse(file) {
   const t0 = performance.now();
   try {
     const [loaded, img] = await Promise.all([loadReferences(), imageDataFromBlob(file)]);
+    if (myFlow !== flow) return;
     const t1 = performance.now();
     const recognition = recognizeAnyPuzzle(img, loaded.map((l) => l.reference));
     const t2 = performance.now();
@@ -75,8 +81,9 @@ async function analyse(file) {
     document.body.dataset.analysisMs = String(Math.round(t3 - t0));
     if (!solution.ok) return showError(solution.error.code, solution.error.message);
 
-    await startWalkthrough(recognition.puzzleId, recognition.state, solution.taps, 0, false);
+    await startWalkthrough(recognition.puzzleId, recognition.state, solution.taps, 0, false, myFlow);
   } catch (err) {
+    if (myFlow !== flow) return;
     console.error(err);
     showError('UNEXPECTED', String(err?.message ?? err));
   }
@@ -84,8 +91,9 @@ async function analyse(file) {
 
 // ----------------------------------------------------------- walkthrough
 
-async function startWalkthrough(puzzleId, start, taps, index, resumed) {
+async function startWalkthrough(puzzleId, start, taps, index, resumed, expectedFlow) {
   const art = await artworkFor(puzzleId);
+  if (expectedFlow !== flow) return; // superseded by a newer user action
   const walkthrough = createWalkthrough(start, taps);
   session = { puzzleId, walkthrough, start, index: walkthrough.clamp(index) };
   buildBoard(art);
@@ -189,6 +197,7 @@ for (const id of ['file', 'file-retry']) {
 $('next').addEventListener('click', () => step(1));
 $('previous').addEventListener('click', () => step(-1));
 $('start-over').addEventListener('click', () => {
+  flow++;
   clearProgress();
   session = null;
   debugInfo = {};
@@ -203,14 +212,18 @@ $('debug').addEventListener('toggle', () => {
 });
 
 // Start: resume saved progress if valid, otherwise show the upload screen.
+// While a resume is being prepared the upload screen stays hidden, so a new
+// screenshot cannot be chosen until the app has settled into one state.
 (async () => {
   loadReferences().catch(() => {}); // warm up; errors surface on use
   const saved = loadProgress();
   if (!saved) return show('upload');
+  const myFlow = flow;
   try {
     debugInfo = { resumed: saved };
-    await startWalkthrough(saved.puzzleId, saved.start, saved.taps, saved.index, true);
+    await startWalkthrough(saved.puzzleId, saved.start, saved.taps, saved.index, true, myFlow);
   } catch {
+    if (myFlow !== flow) return;
     clearProgress();
     show('upload');
   }
