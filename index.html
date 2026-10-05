@@ -2,48 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Puzzle Box Recognition Proof</title>
-  <link rel="stylesheet" href="ui/proof.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>OSRS Puzzle Solver</title>
+  <link rel="stylesheet" href="ui/app.css">
 </head>
-<body>
+<body data-view="upload">
   <main>
-    <h1>Tree puzzle recognition proof</h1>
-    <p class="note">Development page. Everything runs in your browser; nothing is uploaded.</p>
+    <h1>OSRS Puzzle Solver</h1>
 
-    <section class="controls">
-      <label class="file">Screenshot <input id="file" type="file" accept="image/*"></label>
-      <button id="sample" type="button">Use test screenshot (IMG_0120)</button>
+    <!-- Upload -->
+    <section id="upload-view" class="view">
+      <label class="button primary upload-button">
+        Upload screenshot
+        <input id="file" type="file" accept="image/*">
+      </label>
+      <p class="hint">Take a screenshot in OSRS with the Tree puzzle box open, then upload it here.</p>
+      <p class="privacy">Your screenshot is processed on your device and isn’t uploaded anywhere.</p>
     </section>
 
-    <p id="status" class="status" role="status">Choose a screenshot with the Tree puzzle box open.</p>
+    <!-- Analysing -->
+    <section id="analysing-view" class="view" hidden>
+      <p class="status" role="status" aria-live="polite">Reading puzzle…</p>
+    </section>
 
-    <section id="result" hidden>
-      <div class="columns">
-        <div>
-          <h2>Detected board</h2>
-          <canvas id="overlay"></canvas>
-        </div>
-        <div>
-          <h2>Recognised state</h2>
-          <table id="state" class="state"></table>
-          <h2>Summary</h2>
-          <dl id="summary" class="summary"></dl>
-        </div>
+    <!-- Error -->
+    <section id="error-view" class="view" hidden>
+      <div class="error" role="alert">
+        <h2 id="error-title"></h2>
+        <p id="error-text"></p>
       </div>
-
-      <h2>Per-cell diagnostics</h2>
-      <div class="scroll"><table id="cells" class="diag"></table></div>
-
-      <h2>Look-alike pairs</h2>
-      <div class="scroll"><table id="pairs" class="diag"></table></div>
-
-      <details>
-        <summary>Raw diagnostics JSON</summary>
-        <pre id="json"></pre>
-      </details>
+      <label class="button primary upload-button">
+        Try another screenshot
+        <input id="file-retry" type="file" accept="image/*">
+      </label>
+      <p class="privacy">Your screenshot is processed on your device and isn’t uploaded anywhere.</p>
     </section>
+
+    <!-- Walkthrough -->
+    <section id="walkthrough-view" class="view" hidden>
+      <p id="resumed" class="note" hidden>Resumed where you left off.</p>
+      <p id="move-label" class="move-label" aria-live="polite"></p>
+      <div id="board" class="board" role="img"></div>
+      <p id="upcoming" class="upcoming"></p>
+      <div class="controls">
+        <button id="previous" type="button" class="button">Previous</button>
+        <button id="next" type="button" class="button primary">Next</button>
+      </div>
+      <button id="start-over" type="button" class="link-button">Start over</button>
+    </section>
+
+    <details id="debug" class="debug">
+      <summary>Debug details</summary>
+      <div id="debug-body"></div>
+    </details>
   </main>
-  <script type="module" src="ui/proof.js"></script>
+  <script type="module" src="ui/app.js"></script>
 </body>
 </html>
