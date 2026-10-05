@@ -161,6 +161,18 @@ function step(delta) {
   session.index = index;
   $('resumed').hidden = true;
   render();
+  if (delta > 0 && w.view(index).complete) reportSolved();
+}
+
+// Anonymous solve count: logs a page view of /solved/<puzzle> with Vercel
+// Web Analytics (no screenshot, board or move data). Once per walkthrough,
+// and silently skipped if analytics is unavailable or blocked.
+function reportSolved() {
+  if (session.reportedSolved) return;
+  session.reportedSolved = true;
+  try {
+    window.va?.('pageview', { route: '/solved/[puzzle]', path: `/solved/${session.puzzleId}` });
+  } catch { /* analytics must never affect the puzzle */ }
 }
 
 // ------------------------------------------------------------ persistence
