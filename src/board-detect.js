@@ -35,6 +35,15 @@ export function detectBoard(img, options = {}) {
     attempts.push(r ? { threshold: t, confidence: round(r.confidence), scores: r.scores } : { threshold: t, confidence: 0, scores: null });
     if (r && (!best || r.confidence > best.confidence)) best = r;
   }
+  // Only when every threshold failed: see frameEdgeFallback.
+  if (!best || best.confidence < opts.minConfidence) {
+    const fb = frameEdgeFallback(img, opts);
+    if (fb) {
+      const edges = refineEdges(img, fb);
+      const { xs, ys, ...rest } = fb;
+      return { ok: true, ...rest, edges, cells: cellsFromEdges(edges), attempts };
+    }
+  }
   if (!best) {
     return { ok: false, reason: 'No regular 5×5 grid of dark lines was found in the image.', confidence: 0, attempts };
   }
@@ -165,6 +174,47 @@ function cellsFromEdges(edges) {
     }
   }
   return cells;
+}
+
+// Fallback for boards whose frame bevel is lighter than their grid lines and
+// whose surroundings are dark, warm scenery (e.g. a puzzle opened in a swamp):
+// at a low threshold the grid is found cleanly but the frame edges are not
+// dark enough; at higher thresholds the frame passes but the grid lines run
+// on into the scenery, so no regular grid is found at all.
+// Every grid candidate found at threshold t (all checks unchanged) has only
+// its frame edges re-measured with the next threshold's line-colour mask; the
+// grid itself is never regenerated or loosened at that threshold. The
+// strongest candidate is accepted only if it then reaches minConfidence.
+function frameEdgeFallback(img, opts) {
+  const { width: W, height: H } = img;
+  const minRun = Math.max(16, Math.round(0.06 * Math.min(W, H)));
+  const ts = opts.darkThresholds;
+  let best = null;
+  for (let i = 0; i < ts.length - 1; i++) {
+    const mask = darkMask(img, ts[i]);
+    const vQuads = equallySpacedQuads(lineCandidates(mask, W, H, minRun, true));
+    const hQuads = equallySpacedQuads(lineCandidates(mask, W, H, minRun, false));
+    if (!vQuads.length || !hQuads.length) continue;
+    let frameMask = null;
+    for (const vq of vQuads) {
+      for (const hq of hQuads) {
+        const geo = pairQuads(vq, hq);
+        if (!geo) continue;
+        const scored = scoreGeometry(mask, W, H, geo);
+        frameMask ??= darkMask(img, ts[i + 1]);
+        const frameEdges = scoreGeometry(frameMask, W, H, geo).scores.frameEdges;
+        const scores = { ...scored.scores, frameEdges };
+        const confidence = Math.min(...Object.values(scores));
+        if (!best || confidence > best.confidence) {
+          best = {
+            ...scored, scores, confidence, threshold: ts[i],
+            fallback: { frameThreshold: ts[i + 1], frameEdgesAtThreshold: scored.scores.frameEdges },
+          };
+        }
+      }
+    }
+  }
+  return best && best.confidence >= opts.minConfidence ? best : null;
 }
 
 function detectWithThreshold(img, threshold) {

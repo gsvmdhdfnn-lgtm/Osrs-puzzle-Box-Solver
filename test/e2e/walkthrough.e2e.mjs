@@ -27,6 +27,10 @@ import { EXPECTED_STATE, screenshot as loadScreenshot, cellBox, fillRect, sharpF
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = path.join(root, 'test/e2e/screenshots');
 const FIXTURE = path.join(root, 'test/fixtures/tree-mobile-img0120.png');
+// Genuine Gothic castle screenshot over dark scenery (needs the frame-edge
+// fallback); decoded by the browser, including its Display P3 profile.
+const GOTHIC = path.join(root, 'test/fixtures/gothic-castle-img0233.png');
+const GOTHIC_STATE = [1, 3, 9, 8, 5, 6, 2, 4, 10, 0, 11, 7, 12, 13, 14, 16, 17, 18, 19, 24, 21, 22, 23, 20, 15];
 const TAPS = [...readFileSync(path.join(root, 'test/fixtures/img0120-solution.md'), 'utf8')
   .matchAll(/^\s*\d+\. tap (\d+)$/gm)].map((m) => Number(m[1]));
 const BOARDS = [EXPECTED_STATE];
@@ -318,6 +322,41 @@ async function runOtherPuzzle(browser, cfg, results) {
   return r;
 }
 
+async function runGenuineGothic(browser, cfg, results) {
+  const context = await browser.newContext({ viewport: cfg.viewport, deviceScaleFactor: cfg.deviceScaleFactor, isMobile: cfg.isMobile, hasTouch: cfg.hasTouch });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  const press = (sel) => (cfg.hasTouch ? page.tap(sel) : page.click(sel));
+  const r = { viewport: cfg.name, puzzle: 'gothic-castle (genuine IMG_0233)' };
+  await page.goto(results.base);
+  await page.waitForFunction(() => document.body.dataset.view === 'upload');
+  await page.setInputFiles('#file', GOTHIC);
+  await page.waitForFunction(() => ['walkthrough', 'error'].includes(document.body.dataset.view), null, { timeout: 60000 });
+  assert.equal(await view(page), 'walkthrough', `IMG_0233: ${await page.textContent('#error-view')}`);
+  r.analysisMs = Number(await page.evaluate(() => document.body.dataset.analysisMs));
+  assert.equal(await page.getAttribute('#board', 'data-puzzle'), 'gothic-castle');
+  assert.deepEqual(await readBoard(page), GOTHIC_STATE);
+  const taps = solvePuzzle(GOTHIC_STATE).taps;
+  assert.equal((await page.textContent('#move-label')).trim(), `Move 1 of ${taps.length}`);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(shots, `${cfg.name}-8-gothic-img0233-move1.png`) });
+  let board = GOTHIC_STATE;
+  for (let i = 0; i < taps.length; i++) {
+    assert.deepEqual(await highlighted(page), [taps[i]], `gothic move ${i + 1}`);
+    assert.deepEqual(await readBoard(page), board);
+    await press('#next');
+    board = applyTap(board, taps[i]);
+  }
+  assert.deepEqual(await readBoard(page), [...SOLVED_STATE]);
+  assert.equal((await page.textContent('#move-label')).trim(), 'Puzzle solved ✓');
+  r.walkthrough = `ok (${taps.length}/${taps.length} moves; solved)`;
+  assert.deepEqual(errors, []);
+  await context.close();
+  return r;
+}
+
 const { chromium } = await loadPlaywright();
 await mkdir(shots, { recursive: true });
 const server = await serve();
@@ -355,6 +394,7 @@ try {
   for (const cfg of VIEWPORTS) {
     try {
       results.push(await runViewport(browser, cfg, { base, errorImages }));
+      results.push(await runGenuineGothic(browser, cfg, { base }));
       results.push(await runOtherPuzzle(browser, cfg, { base, castle, noBoard }));
     } catch (e) {
       failed = true;
