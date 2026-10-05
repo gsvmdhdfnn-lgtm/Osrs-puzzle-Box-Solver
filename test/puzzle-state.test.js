@@ -57,3 +57,21 @@ test('even-width boards use the blank row in the parity rule', () => {
   const swapped = [...solved4]; [swapped[0], swapped[1]] = [swapped[1], swapped[0]];
   assert.equal(isSolvable(swapped, 4), false);
 });
+
+test('applyTap moves an adjacent tile into the blank and rejects anything else', async () => {
+  const { applyTap, isLegalTap, isSolved, SOLVED_STATE } = await import('../src/puzzle-state.js');
+  assert.equal(isSolved([...SOLVED_STATE]), true);
+  const moved = applyTap([...SOLVED_STATE], 20); // tile above the blank
+  assert.deepEqual(moved.slice(15), [16, 17, 18, 19, 0, 21, 22, 23, 24, 20]);
+  assert.equal(moved[19], 0);
+  assert.equal(moved[24], 20);
+  assert.equal(isSolved(moved), false);
+  for (const bad of [19, 18, 1, 0, 25, -1, 1.5]) {
+    assert.equal(isLegalTap(SOLVED_STATE, bad), false, `tile ${bad}`);
+    assert.throws(() => applyTap([...SOLVED_STATE], bad), /Illegal tap/);
+  }
+  // Row wrap-around is not adjacency: blank at cell 5 (row 2 start), tile at cell 4 (row 1 end).
+  const s = [...SOLVED_STATE];
+  [s[5], s[24]] = [s[24], s[5]];
+  assert.equal(isLegalTap(s, 5), false);
+});

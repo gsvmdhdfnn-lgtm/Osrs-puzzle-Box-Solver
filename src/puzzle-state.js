@@ -52,3 +52,35 @@ export function toGrid(state, size = SIZE) {
   for (let r = 0; r < size; r++) rows.push(state.slice(r * size, (r + 1) * size));
   return rows;
 }
+
+/** The canonical solved state: 1..24 then the blank. */
+export const SOLVED_STATE = Object.freeze([...Array(SIZE * SIZE - 1)].map((_, i) => i + 1).concat(0));
+
+export function isSolved(state) {
+  return state.length === SOLVED_STATE.length && state.every((v, i) => v === SOLVED_STATE[i]);
+}
+
+/** True when `tile` is orthogonally adjacent to the blank. */
+export function isLegalTap(state, tile, size = SIZE) {
+  if (!Number.isInteger(tile) || tile <= 0) return false;
+  const t = state.indexOf(tile), b = state.indexOf(0);
+  if (t < 0 || b < 0) return false;
+  const dr = Math.abs(Math.floor(t / size) - Math.floor(b / size));
+  const dc = Math.abs((t % size) - (b % size));
+  return dr + dc === 1;
+}
+
+/**
+ * Taps `tile`, sliding it into the blank. Returns a new state; throws if the
+ * tap is not legal so callers can never silently apply an impossible move.
+ */
+export function applyTap(state, tile, size = SIZE) {
+  if (!isLegalTap(state, tile, size)) {
+    throw new Error(`Illegal tap: tile ${tile} is not adjacent to the blank.`);
+  }
+  const next = [...state];
+  const t = next.indexOf(tile), b = next.indexOf(0);
+  next[b] = tile;
+  next[t] = 0;
+  return next;
+}
