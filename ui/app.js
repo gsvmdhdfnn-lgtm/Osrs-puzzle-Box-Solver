@@ -1,7 +1,8 @@
 // Presentation and flow for the puzzle walkthrough. All recognition,
 // identification, solving and walkthrough logic lives in src/; this file only
-// wires it to the page. Nothing leaves the device: the only network requests
-// are for the reference artwork shipped with the page.
+// wires it to the page. The screenshot never leaves the device: the only
+// network requests are for the reference artwork shipped with the page and
+// the anonymous usage counts below (see report()).
 import { prepareReference, recognizeAnyPuzzle } from '../src/recognize.js';
 import { solvePuzzle } from '../src/solver.js';
 import { createWalkthrough } from '../src/walkthrough.js';
@@ -48,6 +49,7 @@ function show(view) {
 
 function showError(code) {
   const msg = userMessage(code);
+  reportFailed(code);
   $('error-title').textContent = msg.title;
   $('error-text').textContent = msg.text;
   show('error');
@@ -73,6 +75,7 @@ async function analyse(file) {
     if (!solution.ok) return showError(solution.error.code);
 
     await startWalkthrough(recognition.puzzleId, recognition.state, solution.taps, 0, false, myFlow);
+    if (myFlow === flow) report('/read/[puzzle]', `/read/${recognition.puzzleId}`);
   } catch (err) {
     if (myFlow !== flow) return;
     console.error(err);
@@ -164,15 +167,29 @@ function step(delta) {
   if (delta > 0 && w.view(index).complete) reportSolved();
 }
 
-// Anonymous solve count: logs a page view of /solved/<puzzle> with Vercel
-// Web Analytics (no screenshot, board or move data). Once per walkthrough,
-// and silently skipped if analytics is unavailable or blocked.
+// Anonymous usage counts, logged as page views with Vercel Web Analytics:
+//   /read/<puzzle>    a screenshot was read and a solution shown
+//   /solved/<puzzle>  the walkthrough reached the last move (once per walkthrough)
+//   /failed/<reason>  a screenshot couldn't be used (the error code only)
+// Only these paths are sent — never the screenshot, board or move data — and
+// they are silently skipped if analytics is unavailable or blocked.
+function report(route, path) {
+  try {
+    window.va?.('pageview', { route, path });
+  } catch { /* analytics must never affect the puzzle */ }
+}
+
 function reportSolved() {
   if (session.reportedSolved) return;
   session.reportedSolved = true;
-  try {
-    window.va?.('pageview', { route: '/solved/[puzzle]', path: `/solved/${session.puzzleId}` });
-  } catch { /* analytics must never affect the puzzle */ }
+  report('/solved/[puzzle]', `/solved/${session.puzzleId}`);
+}
+
+const FAILURE_CODES = ['BOARD_NOT_FOUND', 'UNSUPPORTED_PUZZLE', 'PUZZLE_AMBIGUOUS', 'POOR_MATCH',
+  'AMBIGUOUS', 'INVALID_STATE', 'UNSOLVABLE', 'UNEXPECTED'];
+function reportFailed(code) {
+  const known = FAILURE_CODES.includes(code) ? code : 'UNEXPECTED';
+  report('/failed/[reason]', `/failed/${known.toLowerCase().replaceAll('_', '-')}`);
 }
 
 // ------------------------------------------------------------ persistence
