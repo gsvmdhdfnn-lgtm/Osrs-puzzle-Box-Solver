@@ -127,8 +127,8 @@ h2 { font-size: 1.1rem; margin: 0 0 6px; }
   border-radius: 0.3em; opacity: var(--fade);
   box-shadow: 0 0 0 1px var(--accent-ink);
 }
-/* With an arrow, the number (or ×2 for a repeated tile) sits small in a corner. */
-.tile .mark.both .num, .tile .num.repeat {
+/* With an arrow, the number sits small in a corner. */
+.tile .mark.both .num {
   position: absolute; left: 4px; top: 4px;
   font-size: max(11px, calc(var(--board) * 0.035));
 }

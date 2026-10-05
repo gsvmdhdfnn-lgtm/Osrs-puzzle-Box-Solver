@@ -126,17 +126,17 @@ function moveArrow(board, tile) {
   return blankRow > fromRow ? '↓' : '↑';
 }
 
-// The next `display.steps` taps from the current index, grouped by tile:
-// tile → { step, arrow, steps[] }. A tile only moves when it is tapped, so its
-// current cell is where the player will find it at its first upcoming step;
-// `step` and `arrow` describe that first use, `steps` lists every use.
+// Up to `count` upcoming taps from the current index: tile → { step, arrow }.
+// A tile only moves when it is tapped, so every tile shown is still in its
+// current cell when its turn comes. The preview stops before the first tile
+// that would be tapped a second time, so what is lit is always the exact
+// next moves in order, with no gaps.
 function upcomingTaps(w, index, count) {
   const byTile = new Map();
   for (let k = 0; k < count && index + k < w.total; k++) {
     const v = w.view(index + k);
-    const entry = byTile.get(v.nextTile);
-    if (entry) entry.steps.push(k + 1);
-    else byTile.set(v.nextTile, { step: k + 1, arrow: moveArrow(v.board, v.nextTile), steps: [k + 1] });
+    if (byTile.has(v.nextTile)) break;
+    byTile.set(v.nextTile, { step: k + 1, arrow: moveArrow(v.board, v.nextTile) });
   }
   return byTile;
 }
@@ -153,13 +153,8 @@ function markFor(entry) {
   if (display.mark !== 'arrows') {
     const num = document.createElement('span');
     num.className = 'num';
-    num.textContent = entry.steps.join('·');
+    num.textContent = String(entry.step);
     mark.append(num);
-  } else if (entry.steps.length > 1) {
-    const repeat = document.createElement('span');
-    repeat.className = 'num repeat';
-    repeat.textContent = `×${entry.steps.length}`;
-    mark.append(repeat);
   }
   return mark;
 }
