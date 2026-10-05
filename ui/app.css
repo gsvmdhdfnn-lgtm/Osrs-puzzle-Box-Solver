@@ -10,10 +10,10 @@
   --primary-ink: #1b1610;
   --error: #ff8a7a;
   --frame: #3b2a14;
-  --board: min(calc(100vw - 32px), 480px, calc(100svh - 300px));
+  --board: min(calc(100vw - 32px), 480px, calc(100svh - 380px));
 }
 @supports not (height: 100svh) {
-  :root { --board: min(calc(100vw - 32px), 480px, calc(100vh - 300px)); }
+  :root { --board: min(calc(100vw - 32px), 480px, calc(100vh - 380px)); }
 }
 
 * { box-sizing: border-box; }
@@ -85,8 +85,9 @@ h2 { font-size: 1.1rem; margin: 0 0 6px; }
   filter: brightness(0.62) saturate(0.8);
   transition: filter 160ms;
 }
-.board.solved .tile img, .tile.next img { filter: none; }
+.board.solved .tile img, .tile.next img, .tile.later img { filter: none; }
 .tile.next { z-index: 2; }
+.tile.next, .tile.later { cursor: pointer; }
 .tile.next::after {
   content: ""; position: absolute; inset: -3px;
   border: 5px solid var(--accent); border-radius: 6px;
@@ -94,12 +95,42 @@ h2 { font-size: 1.1rem; margin: 0 0 6px; }
   animation: pulse 1.2s ease-in-out infinite;
   pointer-events: none;
 }
-.tile .badge {
-  position: absolute; right: 5px; bottom: 5px;
-  min-width: 22px; padding: 0 4px;
+/* Later highlighted steps: thinner outline, fading with distance. */
+.tile.later { z-index: 1; }
+.tile.later::after {
+  content: ""; position: absolute; inset: 0;
+  border: 3px solid var(--accent); border-radius: 5px;
+  opacity: var(--fade);
+  pointer-events: none;
+}
+/* Step marks: a centred arrow (and/or step number) that shrinks and fades the
+   later the step is. --scale/--fade are set per step below. */
+.tile { --scale: 1; --fade: 1; }
+.tile[data-step="2"] { --scale: 0.74; --fade: 0.9; }
+.tile[data-step="3"] { --scale: 0.6; --fade: 0.8; }
+.tile[data-step="4"] { --scale: 0.5; --fade: 0.7; }
+.tile[data-step="5"] { --scale: 0.42; --fade: 0.62; }
+.tile .mark {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.tile .arrow {
+  font-size: calc(var(--board) * 0.13 * var(--scale)); font-weight: 900; line-height: 1;
+  color: var(--accent); opacity: var(--fade);
+  text-shadow: 0 0 2px var(--accent-ink), 0 0 2px var(--accent-ink), 0 0 6px #000;
+}
+.tile .num {
+  min-width: 1.5em; padding: 0 0.25em;
   background: var(--accent); color: var(--accent-ink);
-  font-size: 14px; font-weight: 700; line-height: 20px; text-align: center;
-  border-radius: 4px;
+  font-size: calc(var(--board) * 0.07 * var(--scale)); font-weight: 800; line-height: 1.35; text-align: center;
+  border-radius: 0.3em; opacity: var(--fade);
+  box-shadow: 0 0 0 1px var(--accent-ink);
+}
+/* With an arrow, the number (or ×2 for a repeated tile) sits small in a corner. */
+.tile .mark.both .num, .tile .num.repeat {
+  position: absolute; left: 4px; top: 4px;
+  font-size: max(11px, calc(var(--board) * 0.035));
 }
 @keyframes pulse { 50% { box-shadow: 0 0 0 2px var(--accent-ink), 0 0 4px 1px #ffd23f80; } }
 @media (prefers-reduced-motion: reduce) {
@@ -108,6 +139,21 @@ h2 { font-size: 1.1rem; margin: 0 0 6px; }
 }
 
 .upcoming { color: var(--muted); text-align: center; margin: 10px 0 0; min-height: 1.45em; font-size: 0.95rem; }
+.options {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px;
+  margin: 0 0 10px;
+}
+.option-group { display: flex; align-items: center; gap: 4px; }
+.option-label { color: var(--muted); font-size: 0.85rem; margin-right: 2px; }
+.chip {
+  min-height: 34px; min-width: 34px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 17px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 0.85rem; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.chip[aria-pressed="true"] { background: var(--panel); border-color: var(--accent); color: var(--text); font-weight: 600; }
+.chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
 .link-button {
   display: block; margin: 14px auto 0; padding: 10px 16px; min-height: 44px;

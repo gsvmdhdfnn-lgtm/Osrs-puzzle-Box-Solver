@@ -126,24 +126,65 @@ function moveArrow(board, tile) {
   return blankRow > fromRow ? '↓' : '↑';
 }
 
+// The next `display.steps` taps from the current index, grouped by tile:
+// tile → { step, arrow, steps[] }. A tile only moves when it is tapped, so its
+// current cell is where the player will find it at its first upcoming step;
+// `step` and `arrow` describe that first use, `steps` lists every use.
+function upcomingTaps(w, index, count) {
+  const byTile = new Map();
+  for (let k = 0; k < count && index + k < w.total; k++) {
+    const v = w.view(index + k);
+    const entry = byTile.get(v.nextTile);
+    if (entry) entry.steps.push(k + 1);
+    else byTile.set(v.nextTile, { step: k + 1, arrow: moveArrow(v.board, v.nextTile), steps: [k + 1] });
+  }
+  return byTile;
+}
+
+function markFor(entry) {
+  const mark = document.createElement('span');
+  mark.className = `mark ${display.mark}`;
+  if (display.mark !== 'numbers') {
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = entry.arrow;
+    mark.append(arrow);
+  }
+  if (display.mark !== 'arrows') {
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = entry.steps.join('·');
+    mark.append(num);
+  } else if (entry.steps.length > 1) {
+    const repeat = document.createElement('span');
+    repeat.className = 'num repeat';
+    repeat.textContent = `×${entry.steps.length}`;
+    mark.append(repeat);
+  }
+  return mark;
+}
+
 function render() {
-  const view = session.walkthrough.view(session.index);
+  const w = session.walkthrough;
+  const view = w.view(session.index);
   const board = $('board');
   board.classList.toggle('solved', view.complete);
+  const upcoming = upcomingTaps(w, session.index, display.steps);
   for (const tile of board.children) {
     const t = Number(tile.dataset.tile);
     const cell = view.board.indexOf(t);
     tile.style.setProperty('--r', String(Math.floor(cell / 5)));
     tile.style.setProperty('--c', String(cell % 5));
     tile.dataset.cell = String(cell);
-    const isNext = t === view.nextTile;
-    tile.classList.toggle('next', isNext);
-    tile.querySelector('.badge')?.remove();
-    if (isNext) {
-      const badge = document.createElement('span');
-      badge.className = 'badge';
-      badge.textContent = moveArrow(view.board, t);
-      tile.append(badge);
+    const entry = upcoming.get(t);
+    tile.classList.toggle('next', entry?.step === 1);
+    tile.classList.toggle('later', entry != null && entry.step > 1);
+    tile.querySelector('.mark')?.remove();
+    if (entry) {
+      tile.dataset.step = String(entry.step);
+      tile.append(markFor(entry));
+    } else {
+      delete tile.dataset.step;
     }
   }
   const name = REFERENCES[session.puzzleId]?.name ?? 'Puzzle';
@@ -158,16 +199,17 @@ function render() {
   saveProgress();
 }
 
+// Move forward (delta > 0) or back (delta < 0) by |delta| taps.
 function step(delta) {
   if (!session || document.body.dataset.view !== 'walkthrough') return;
   const w = session.walkthrough;
-  const index = delta > 0 ? w.next(session.index) : w.previous(session.index);
+  const index = w.clamp(session.index + delta);
   if (index === session.index) return;
   session.index = index;
   $('resumed').hidden = true;
   render();
+  if (delta > 0 && index >= halfwayIndex(w.taps.length)) reportHalfway();
   if (delta > 0 && w.view(index).complete) reportSolved();
-  else if (delta > 0 && index >= halfwayIndex(w.taps.length)) reportHalfway();
 }
 
 // Anonymous usage counts, logged as page views with Vercel Web Analytics:
@@ -207,6 +249,39 @@ function reportFailed(code) {
   report('/failed/[reason]', `/failed/${known.toLowerCase().replaceAll('_', '-')}`);
 }
 
+// ------------------------------------------------------- display options
+// How many upcoming taps to highlight and how to mark them. A per-device
+// preference only, kept apart from puzzle progress.
+const DISPLAY_KEY = 'osrs-puzzle-solver/display';
+const STEP_CHOICES = [1, 3, 5];
+const MARK_CHOICES = ['arrows', 'numbers', 'both'];
+const display = loadDisplay();
+
+function loadDisplay() {
+  const fallback = { steps: 1, mark: 'arrows' };
+  try {
+    const saved = JSON.parse(localStorage.getItem(DISPLAY_KEY));
+    return {
+      steps: STEP_CHOICES.includes(saved?.steps) ? saved.steps : fallback.steps,
+      mark: MARK_CHOICES.includes(saved?.mark) ? saved.mark : fallback.mark,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function setDisplay(change) {
+  Object.assign(display, change);
+  try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(display)); } catch { /* preference just isn't remembered */ }
+  renderOptions();
+  if (session) render();
+}
+
+function renderOptions() {
+  for (const b of document.querySelectorAll('#options [data-steps]')) b.setAttribute('aria-pressed', String(Number(b.dataset.steps) === display.steps));
+  for (const b of document.querySelectorAll('#options [data-mark]')) b.setAttribute('aria-pressed', String(b.dataset.mark === display.mark));
+}
+
 // ------------------------------------------------------------ persistence
 
 function saveProgress() {
@@ -238,10 +313,18 @@ for (const id of ['file', 'file-retry']) {
     if (file) analyse(file);
   });
 }
+// Tapping a highlighted tile moves forward to (and including) that tile's
+// step, so after making several moves in OSRS one tap catches the page up.
 $('board').addEventListener('click', (e) => {
   const tile = e.target.closest('.tile');
-  if (tile?.classList.contains('next')) step(1);
+  if (tile?.dataset.step) step(Number(tile.dataset.step));
 });
+$('options').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b?.dataset.steps) setDisplay({ steps: Number(b.dataset.steps) });
+  else if (b?.dataset.mark) setDisplay({ mark: b.dataset.mark });
+});
+renderOptions();
 $('previous').addEventListener('click', () => step(-1));
 $('start-over').addEventListener('click', () => {
   flow++;

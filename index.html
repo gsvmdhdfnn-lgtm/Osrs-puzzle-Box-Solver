@@ -43,6 +43,20 @@
     <section id="walkthrough-view" class="view" hidden>
       <p id="resumed" class="note" hidden>Resumed where you left off.</p>
       <p id="move-label" class="move-label" aria-live="polite"></p>
+      <div id="options" class="options">
+        <div class="option-group" role="group" aria-label="Steps shown">
+          <span class="option-label">Steps</span>
+          <button type="button" class="chip" data-steps="1">1</button>
+          <button type="button" class="chip" data-steps="3">3</button>
+          <button type="button" class="chip" data-steps="5">5</button>
+        </div>
+        <div class="option-group" role="group" aria-label="Show">
+          <span class="option-label">Show</span>
+          <button type="button" class="chip" data-mark="arrows">Arrows</button>
+          <button type="button" class="chip" data-mark="numbers">Numbers</button>
+          <button type="button" class="chip" data-mark="both">Both</button>
+        </div>
+      </div>
       <div id="board" class="board" role="img"></div>
       <div class="controls">
         <button id="previous" type="button" class="button">Previous</button>
