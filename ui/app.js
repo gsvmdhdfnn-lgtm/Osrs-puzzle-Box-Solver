@@ -10,7 +10,6 @@ import { userMessage } from '../src/user-messages.js';
 import { REFERENCES } from '../src/references.js';
 import { imageDataFromBlob, imageDataFromUrl } from '../src/browser/load-image.js';
 import { tileArtwork } from './tile-art.js';
-import { renderDebug } from './debug.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -39,21 +38,18 @@ let session = null;     // { puzzleId, walkthrough, start, index }
 // for an earlier action checks it and does nothing once it is stale, so a
 // slow resume or analysis can never render or save over a newer action.
 let flow = 0;
-let debugInfo = {};
 
 // ------------------------------------------------------------------ views
 
 function show(view) {
   document.body.dataset.view = view;
   for (const v of ['upload', 'analysing', 'error', 'walkthrough']) $(`${v}-view`).hidden = v !== view;
-  if ($('debug').open) renderDebug($('debug-body'), debugInfo);
 }
 
-function showError(code, detail) {
+function showError(code) {
   const msg = userMessage(code);
   $('error-title').textContent = msg.title;
   $('error-text').textContent = msg.text;
-  debugInfo = { ...debugInfo, error: { code, message: detail ?? msg.text } };
   show('error');
 }
 
@@ -69,23 +65,18 @@ async function analyse(file) {
   try {
     const [loaded, img] = await Promise.all([loadReferences(), imageDataFromBlob(file)]);
     if (myFlow !== flow) return;
-    const t1 = performance.now();
     const recognition = recognizeAnyPuzzle(img, loaded.map((l) => l.reference));
-    const t2 = performance.now();
-    debugInfo = { recognition, timingsMs: { load: t1 - t0, recognise: t2 - t1 } };
-    if (!recognition.ok) return showError(recognition.error.code, recognition.error.message);
+    if (!recognition.ok) return showError(recognition.error.code);
 
     const solution = solvePuzzle(recognition.state);
-    const t3 = performance.now();
-    debugInfo = { recognition, solution, timingsMs: { load: t1 - t0, recognise: t2 - t1, solve: t3 - t2, total: t3 - t0 } };
-    document.body.dataset.analysisMs = String(Math.round(t3 - t0));
-    if (!solution.ok) return showError(solution.error.code, solution.error.message);
+    document.body.dataset.analysisMs = String(Math.round(performance.now() - t0));
+    if (!solution.ok) return showError(solution.error.code);
 
     await startWalkthrough(recognition.puzzleId, recognition.state, solution.taps, 0, false, myFlow);
   } catch (err) {
     if (myFlow !== flow) return;
     console.error(err);
-    showError('UNEXPECTED', String(err?.message ?? err));
+    showError('UNEXPECTED');
   }
 }
 
@@ -212,15 +203,11 @@ $('start-over').addEventListener('click', () => {
   flow++;
   clearProgress();
   session = null;
-  debugInfo = {};
   show('upload');
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') step(1);
   else if (e.key === 'ArrowLeft') step(-1);
-});
-$('debug').addEventListener('toggle', () => {
-  if ($('debug').open) renderDebug($('debug-body'), debugInfo);
 });
 
 // Start: resume saved progress if valid, otherwise show the upload screen.
@@ -232,7 +219,6 @@ $('debug').addEventListener('toggle', () => {
   if (!saved) return show('upload');
   const myFlow = flow;
   try {
-    debugInfo = { resumed: saved };
     await startWalkthrough(saved.puzzleId, saved.start, saved.taps, saved.index, true, myFlow);
   } catch {
     if (myFlow !== flow) return;

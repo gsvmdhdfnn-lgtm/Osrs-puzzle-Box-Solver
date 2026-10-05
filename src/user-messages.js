@@ -1,5 +1,5 @@
 // Plain-language, puzzle-neutral messages for failures shown to players.
-// Technical details stay in the debug disclosure.
+// Technical details are never shown to players.
 
 const TILES_UNCLEAR = {
   title: 'Tiles unclear',
