@@ -90,6 +90,8 @@ async function startWalkthrough(puzzleId, start, taps, index, resumed, expectedF
   if (expectedFlow !== flow) return; // superseded by a newer user action
   const walkthrough = createWalkthrough(start, taps);
   session = { puzzleId, walkthrough, start, index: walkthrough.clamp(index) };
+  // A resumed walkthrough already past halfway was counted before the reload.
+  session.reportedHalfway = session.index >= halfwayIndex(taps.length);
   buildBoard(art);
   $('board').dataset.puzzle = puzzleId;
   $('resumed').hidden = !resumed;
@@ -165,10 +167,12 @@ function step(delta) {
   $('resumed').hidden = true;
   render();
   if (delta > 0 && w.view(index).complete) reportSolved();
+  else if (delta > 0 && index >= halfwayIndex(w.taps.length)) reportHalfway();
 }
 
 // Anonymous usage counts, logged as page views with Vercel Web Analytics:
 //   /read/<puzzle>    a screenshot was read and a solution shown
+//   /halfway/<puzzle> the walkthrough reached its halfway move (once per walkthrough)
 //   /solved/<puzzle>  the walkthrough reached the last move (once per walkthrough)
 //   /failed/<reason>  a screenshot couldn't be used (the error code only)
 // Only these paths are sent — never the screenshot, board or move data — and
@@ -177,6 +181,17 @@ function report(route, path) {
   try {
     window.va?.('pageview', { route, path });
   } catch { /* analytics must never affect the puzzle */ }
+}
+
+// Move index at which a walkthrough counts as halfway (rounded up).
+function halfwayIndex(total) {
+  return Math.ceil(total / 2);
+}
+
+function reportHalfway() {
+  if (session.reportedHalfway) return;
+  session.reportedHalfway = true;
+  report('/halfway/[puzzle]', `/halfway/${session.puzzleId}`);
 }
 
 function reportSolved() {
