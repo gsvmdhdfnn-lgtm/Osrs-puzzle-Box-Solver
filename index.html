@@ -37,6 +37,15 @@
         Try another screenshot
         <input id="file-retry" type="file" accept="image/*">
       </label>
+      <div id="feedback" class="feedback">
+        <p class="feedback-question">What were you trying to solve?</p>
+        <div class="feedback-options">
+          <button type="button" class="chip" data-feedback="puzzle-box">Puzzle box</button>
+          <button type="button" class="chip" data-feedback="light-box">Light box</button>
+          <button type="button" class="chip" data-feedback="other">Something else</button>
+        </div>
+        <p id="feedback-thanks" class="feedback-thanks" role="status" hidden>Thanks — that helps us fix it.</p>
+      </div>
       <p class="privacy">Your screenshot is processed on your device and isn’t uploaded anywhere.</p>
     </section>
 

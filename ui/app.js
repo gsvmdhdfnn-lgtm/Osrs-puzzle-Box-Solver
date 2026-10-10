@@ -50,6 +50,7 @@ function show(view) {
 function showError(code) {
   const msg = userMessage(code);
   reportFailed(code);
+  resetFeedback(failureSlug(code));
   $('error-title').textContent = msg.title;
   $('error-text').textContent = msg.text;
   show('error');
@@ -212,6 +213,8 @@ function step(delta) {
 //   /halfway/<puzzle> the walkthrough reached its halfway move (once per walkthrough)
 //   /solved/<puzzle>  the walkthrough reached the last move (once per walkthrough)
 //   /failed/<reason>  a screenshot couldn't be used (the error code only)
+//   /feedback/<reason>/<answer>  the player's optional one-tap answer to
+//                     "What were you trying to solve?" after a failure
 // Only these paths are sent — never the screenshot, board or move data — and
 // they are silently skipped if analytics is unavailable or blocked.
 function report(route, path) {
@@ -239,9 +242,33 @@ function reportSolved() {
 
 const FAILURE_CODES = ['BOARD_NOT_FOUND', 'UNSUPPORTED_PUZZLE', 'PUZZLE_AMBIGUOUS', 'POOR_MATCH',
   'AMBIGUOUS', 'INVALID_STATE', 'UNSOLVABLE', 'UNEXPECTED'];
-function reportFailed(code) {
+function failureSlug(code) {
   const known = FAILURE_CODES.includes(code) ? code : 'UNEXPECTED';
-  report('/failed/[reason]', `/failed/${known.toLowerCase().replaceAll('_', '-')}`);
+  return known.toLowerCase().replaceAll('_', '-');
+}
+
+function reportFailed(code) {
+  report('/failed/[reason]', `/failed/${failureSlug(code)}`);
+}
+
+// Optional one-tap answer on the error screen: what the player was trying to
+// solve (e.g. a light box). Sent as /feedback/<reason>/<answer>, from a fixed
+// list only, once per error shown.
+const FEEDBACK_ANSWERS = ['puzzle-box', 'light-box', 'other'];
+let feedbackReason = null;
+
+function resetFeedback(reason) {
+  feedbackReason = reason;
+  document.querySelector('#feedback .feedback-options').hidden = false;
+  $('feedback-thanks').hidden = true;
+}
+
+function sendFeedback(answer) {
+  if (!feedbackReason || !FEEDBACK_ANSWERS.includes(answer)) return;
+  report('/feedback/[reason]/[answer]', `/feedback/${feedbackReason}/${answer}`);
+  feedbackReason = null;
+  document.querySelector('#feedback .feedback-options').hidden = true;
+  $('feedback-thanks').hidden = false;
 }
 
 // ------------------------------------------------------- display options
@@ -313,6 +340,10 @@ for (const id of ['file', 'file-retry']) {
 $('board').addEventListener('click', (e) => {
   const tile = e.target.closest('.tile');
   if (tile?.dataset.step) step(Number(tile.dataset.step));
+});
+$('feedback').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-feedback]');
+  if (b) sendFeedback(b.dataset.feedback);
 });
 $('options').addEventListener('click', (e) => {
   const b = e.target.closest('button');

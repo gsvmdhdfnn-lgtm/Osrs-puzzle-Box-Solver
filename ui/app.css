@@ -139,6 +139,10 @@ h2 { font-size: 1.1rem; margin: 0 0 6px; }
 }
 
 .upcoming { color: var(--muted); text-align: center; margin: 10px 0 0; min-height: 1.45em; font-size: 0.95rem; }
+.feedback { margin: 18px 0 0; text-align: center; }
+.feedback-question { color: var(--muted); font-size: 0.95rem; margin: 0 0 8px; }
+.feedback-options { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.feedback-thanks { color: var(--muted); font-size: 0.95rem; margin: 0; }
 .options {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px;
   margin: 0 0 10px;
