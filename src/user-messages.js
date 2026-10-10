@@ -13,11 +13,11 @@ const NOT_READABLE = {
 const MESSAGES = {
   BOARD_NOT_FOUND: {
     title: 'Puzzle not found',
-    text: "Couldn't find the puzzle box in this screenshot. Open the puzzle in OSRS and make sure the whole board is visible, then take a new screenshot.",
+    text: "Couldn't find the puzzle box in this screenshot. Open the puzzle in OSRS and make sure the whole board is visible, then take a new screenshot. If this was a light box, those aren't supported yet — coming soon.",
   },
   UNSUPPORTED_PUZZLE: {
     title: 'Puzzle not supported',
-    text: "This doesn't look like one of the supported puzzle boxes.",
+    text: "This doesn't look like one of the supported puzzle boxes. If this was a light box, those aren't supported yet — coming soon.",
   },
   PUZZLE_AMBIGUOUS: {
     title: 'Puzzle unclear',
